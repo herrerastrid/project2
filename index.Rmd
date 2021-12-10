@@ -46,92 +46,223 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+Astrid Herrera (ach3678)
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+My dataset consists of auction data from Ebay for the game Mario Kart on the Nintendo Wii from the year 2009, specifically 143 instances at which a copy of the game was purchased from the website. The 'ID' variable is the unique Auction ID for each sale, 'auctionDuration' is how long the auction was in days, 'nBids' is total number of bids for the game, 'Condition' is a binary variable indicating if the game was new or used, 'startPrice' is the initial price for an auction, 'shipPrice' is how much was spent in shipping, 'totalPrice' is the price at the end of an auction plus shipping fees, 'shipMethod' is the speed or method that the game was shipped out to the buyer, 'sellerRating' is the number of positive rating minus negative ratings for the seller, 'stockPhoto' indicates whether the featured auction photo was unique or a stock image of the video game, 'nWheels' is the number of Wii driving wheels sold with the game, and 'listingTitle' is the name of the auction. All of the price variables are in US Dollars.
+
+I found this dataset in the packge openintro in a list of R datasets from the website https://vincentarelbundock.github.io/Rdatasets/datasets.html and was drawn to it just because I love Mario Kart.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
+library(openintro)
+data(mariokart)
+names(mariokart) <- c('Id', 'auctionDuration', 'nBids', 'Condition', 'startPrice', 'shipPrice', 'totalPrice', 
+                       'shipMethod', 'sellerRating', 'stockPhoto', 'nWheels', 'listingTitle')
 
-# if your dataset needs tidying, do so here
-
-# any other code here
 ```
 
 ### Cluster Analysis
 
 ```{R}
+library(tidyverse)
 library(cluster)
-# clustering code here
+
+clust_dat<-mariokart%>%dplyr::select(nBids, startPrice, shipPrice, totalPrice, sellerRating)
+sil_width<-vector()
+for(i in 2:10){  
+  kms <- kmeans(clust_dat,centers=i) 
+  sil <- silhouette(kms$cluster,dist(clust_dat)) 
+  sil_width[i]<-mean(sil[,3]) #
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+
+#k=2 is best :)
+pam1<-clust_dat%>%pam(k=2)
+pam1
+pamclust<-clust_dat%>%mutate(cluster=as.factor(pam1$clustering)) 
+pamclust%>%group_by(cluster)%>%summarize_if(is.numeric,mean,na.rm=T)
+mariokart%>%slice(pam1$id.med)
+
+library(GGally)
+mariokart %>% mutate(cluster=as.factor(pam1$clustering)) %>% ggpairs(columns = c("nBids", "startPrice", "shipPrice", "totalPrice","sellerRating"), aes(color=cluster))
+
+plot(pam1, which=2)
+
+
 ```
 
-Discussion of clustering here
+The best number of clusters for this clustering solution was determined to be k=2 by computing silhouette width. For the two clusters generated, the second cluster had the highest average values for all variables except totalPrice. The two videogame auctions that represent the medoids for each cluster were found to be the most different for the variable 'sellerRating', and exactly the same for variable 'nBids'.
+The variables 'nBids' and 'shipPrice' visually show the least difference between the two clusters while it appears that the variables 'startPrice' and 'sellerRating' show the most difference between the two clusters. The second teal cluster shows a more uniform distribution for values of the variable 'startPrice' than the first pink cluster.
+The overall overage silhouette width of 0.94 offers a strong cluster solution.
     
-    
+
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+
+mkpca <- princomp(mariokart %>% dplyr::select(nBids, startPrice, shipPrice, totalPrice, sellerRating), cor=T)
+summary(mkpca, loadings = T)
+eigval<-mkpca$sdev^2 
+varprop=round(eigval/sum(eigval), 2) 
+ggplot() + geom_bar(aes(y=varprop, x=1:5), stat="identity") + xlab("") + geom_path(aes(y=varprop, x=1:5)) + geom_text(aes(x=1:5, y=varprop, label=round(varprop, 2)), vjust=1, col="white", size=5) + scale_y_continuous(breaks=seq(0, .6, .2), labels = scales::percent) + scale_x_continuous(breaks=1:10)
+round(cumsum(eigval)/sum(eigval), 2)
+eigval
+
+#matrix <-  mkpca$scores %>% as.data.frame%>% mutate(Condition = as.factor(mariokart$Condition))
+#matrix %>% ggplot(aes(Comp.1, Comp.2, color=Condition)) + geom_point(size=1) + xlab("PC1") +ylab("PC2")
+
+mariokartdf <-  data.frame(PC1=mkpca$scores[, 1], PC2=mkpca$scores[, 2])
+ggplot(mariokartdf, aes(PC1, PC2)) + geom_point()
+
+
+mkpca$loadings[1:5, 1:2] %>% as.data.frame %>% rownames_to_column %>% 
+ggplot() + geom_hline(aes(yintercept=0), lty=2) + 
+  geom_vline(aes(xintercept=0), lty=2) + ylab("PC2") + xlab("PC1") + 
+  geom_segment(aes(x=0, y=0, xend=Comp.1, yend=Comp.2), arrow=arrow(), col="thistle") + 
+  geom_label(aes(x=Comp.1*1.1, y=Comp.2*1.1, label=rowname))
+
 ```
 
-Discussions of PCA here. 
+ 
+PC1 is an axis of number of bids vs. starting price and the seller's rating. So a high score for PC1 indicates that there was a large amount of bids, the starting price was low, and the seller's Ebay rating was low as well. This could indicate a trend among this dataset that auctions will have higher activity regardless of seller rating if the starting price is low enough. PC2 is a general price axis because all loadings have the same sign, so the higher an auction scores for PC2 the more amount of money was paid for the video game overall. 
+Only the first two PCs were retained because including the third PC was mean that the cumulative proportion of variance was greater than 80%, and only the eigenvalues for PC1 and PC2 were greater than 1. PC1 and PC2 represent approximately 66% of the total variance across the variables nBids, startPrice, shipPrice, and totalPrice.
+A plot of PC1 and PC2 scores for all 143 purchases was created and indicates an outlier with exceedingly high PC1 and PC2 score, which is problematic considering PCA is senstive to outliers.
+A loading plot further indicates how variables 'nBids', 'startPrice', and 'sellerRating' contribute the most to PC1 and how variables 'shipPrice' and 'totalPrice' contribute heavily to PC2, while 'startPrice' only somewhat contributes to PC2.
+
 
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+set.seed(1234)
+mariokart <- mariokart %>% mutate(binaryCondition = ifelse(Condition =="new",1,0))
+#selecting for numeric variables with more than 10 distinct values
+mariokartNum <- mariokart %>% select(binaryCondition, nBids, startPrice, shipPrice, totalPrice, sellerRating)
+
+fit <- lm(binaryCondition==1~., data=mariokartNum, family="binomial")
+summary(fit)
+score <- predict(fit)
+score %>% round(3)
+class_diag(score,truth=mariokart$binaryCondition, positive=1)
+
+
+#confusion matrix
+probability<-predict(fit, type="response")
+table(truth=mariokart$binaryCondition, prediction=as.numeric(probability>.5)) %>% addmargins
+73/84 #TNR specificity
+20/59 #TPR sensitivity/recall
+table(mariokart$Condition)
+library(pROC)
+ROCplot<-plot.roc(mariokartNum$binaryCondition~probability)
+
+
 ```
 
 ```{R}
-# cross-validation of linear classifier here
+
+set.seed(1234)
+k=10 
+data<-mariokartNum[sample(nrow(mariokartNum)),] 
+folds<-cut(seq(1:nrow(mariokartNum)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,] 
+  test<-data[folds==i,]
+  truth<-test$binaryCondition 
+  fit<-glm(binaryCondition~.,data=train,family="binomial")
+  probs<-predict(fit,newdata = test,type="response")
+  diags<-rbind(diags,class_diag(probs,truth, positive = 1))
+}
+summarize_all(diags,mean)
 ```
 
-Discussion here
+A generalized linear model, specifically linear regression, was used to try and predict the condition of the videogame sold in an auction(new = 1, used = 0) from the number of bids(nBids), the starting price (startPrice), shipping price (shipPrice), the ending total price (totalPrice), and the seller's ratings (sellerRating). Numeric variables such as auction duration and number of Wii wheels sold were not included because they technically didn't follow the guidelines of a numeric variable for this project as they didn't have more than 10 distinct values. The auction ID variable was also omitted because it is just an identifier for each sale.
+The AUC from the linear regression model being trained to the entire dataset is 0.65, which is means this model is poorly predicting the condition of the videogame sold as seen with ROC curve being close to the diagonal line representing random classification. 
+A confusion matrix details true negative rate (specificity) to be 0.869 from 73 true negative predictions and true positive rate (sensitivity/recall) to be 0.339 from 20 true positive predictions. Thus there is a class imbalance from a prevalence of used copies of MarioKart being sold on eBay, as 84 sales were used copies and 59 were new. 
+The performance from this linear model was further evaluated depending on how it would generalize to new data by 10-fold cross validation. The accuracy and AUC slightly decreased after cross validation, which is not an indication of significant overfitting of the linear model to the dataset.
+
+
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
 # non-parametric classifier code here
+fit <- knn3(binaryCondition~., data=mariokartNum)
+probability <- predict(fit, newdata=mariokartNum)[,2]
+class_diag(probability, mariokartNum$binaryCondition, positive=1) 
+table(truth=mariokart$binaryCondition, prediction=(probability>.5)) %>% addmargins
+74/84 #TNR specificity
+45/59 #TPR sensitivity/recall
+14/59 #FPR
+library(pROC)
+ROCplot<-plot.roc(mariokartNum$binaryCondition~probability)
 ```
 
 ```{R}
-# cross-validation of np classifier here
+cv <- trainControl(method="cv", number = 10, classProbs = T, savePredictions = T)
+fit <- train(binaryCondition ~. , data=mariokartNum, trControl=cv, method="knn")
+class_diag(fit$pred$pred, fit$pred$obs, positive=1)
 ```
 
-Discussion
+k-Nearest neighbor classification was fit to the same numeric variables to attempt to predict the condition of the copy of Mario Kart sold in an auction by non-parametric classification. The AUC from this model being trained to the entire dataset is calculated to be 0.922, which indicates that the in-sample performance is great at predicting the condition of the videogame sold from its non-linear decision boundary. This can also be visualized from the turn in ROC curve passing through the upper left corner of its plot due from a high sensitivity and low false positive rate. The sensitivity in particular from this non-parametric model is much higher than the that of the linear regression model.
+The cross-validation done by the train function within the caret package indicates that the k-Nearest neighbor model was trained too tightly to the dataset because the accuracy and AUC dropped to 0.755 and 0.806 respectively. An AUC of 0.806 signifies a fair performance in cross validation when predicting the condition of the copy of MarioKart and some overfitting.
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+#linear regression
+fit<-lm(totalPrice~nBids + startPrice,data=mariokart)
+yhat<-predict(fit)
+
+#MSE
+mean((mariokart$totalPrice-yhat)^2)
+
 ```
 
 ```{R}
-# cross-validation of regression model here
+set.seed(1234)
+k=10 
+data<-mariokart[sample(nrow(mariokart)),] 
+folds<-cut(seq(1:nrow(mariokart)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  fit<-lm(totalPrice~nBids + startPrice,data=train)
+  yhat<-predict(fit,newdata=test)
+  diags<-mean((test$totalPrice-yhat)^2) 
+}
+mean(diags) 
 ```
 
-Discussion
+A linear regression model was also used to attempt to predict the final and total auction price (totalPrice) paid for a copy of MarioKart from the number of bids (nBids) and the starting prince (startPrice). The resulting mean square error was a whopping 618.568 indicating a large amount of error from one or several very biased or high variance estimates for total price. 10-fold cross validation revealed a much lower MSE of 155.816. This signifies that although this linear regression model can be generalized to new data and that there is no sign of overfitting, the final price still cannot be predicted very well by a linear fit probably due to outliers. 
 
 ### Python 
 
+```{python}
+import pandas as pd
+mariokart=r.mariokart
+highestMKsales = (mariokart.filter(['listingTitle','startPrice','totalPrice','sellerRating']).query('totalPrice > 60').head(5))
+
+
+```
+
 ```{R}
 library(reticulate)
+py$highestMKsales
+top5MKauctions <- py$highestMKsales
+top5MKauctions %>% arrange(desc(totalPrice))
+
 ```
 
-```{python}
-# python code here
-```
-
-Discussion
+The mariokart dataset was accessed in python with "r.". Only four variables were selected, filtered to total prices higher than 60 dollars, and then the top five total prices were retrieved and saved into highestMKsales. In the R code chunk, highestMKsales was accessed with "$py" and arranged by highest to lowest total price, revealing that the two most expensive auctions actually included other videogames.
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
+I didn't enjoy doing this project as much as the first, but was pleased with the dataset I found that matched the guidelines. I am interested to see how the clustering, PCA, and classifiers would differ if I had filtered out any auctions that included more than the Mario Kart game and its accessories because at least two outliers did seem to affect my results. Regardless, its possible that people's tendencies to spend and bid on items regardless of price or condition could be subject to many different factors that can't be fitted just to a few models. I fondly remember the lengths my parents went to to get my brother and I our Wii and other games due to their popularity more than 10 years ago, so it isn't that surprising to me that the features of eBay auctions for a Nintendo game can't be outright predicted, or at least not from less than 200 observations.
 
 
 
